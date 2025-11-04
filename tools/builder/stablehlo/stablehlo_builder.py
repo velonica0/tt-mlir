@@ -644,6 +644,158 @@ class StableHLOBuilder(Builder):
             unit_attrs=unit_attrs,
         )
 
+<<<<<<< HEAD
+=======
+    def slice(
+        self,
+        in0: Operand,
+        start_indices: List[int],
+        limit_indices: List[int],
+        strides: Optional[List[int]] = None,
+        unit_attrs: Optional[List[str]] = None,
+        sharding_attr: Optional[sdy.TensorShardingPerValueAttr] = None,
+    ) -> OpView:
+        """
+        Creates ``stablehlo.slice``.
+
+        *Tensor slicing operation.*
+
+        Extracts a slice from the input tensor using statically-computed starting indices.
+        The slice is defined by start_indices, limit_indices, and strides for each dimension.
+
+        More formally, result[result_index] = operand[operand_index] where:
+        operand_index = start_indices + result_index * strides
+
+        .. code-block:: mlir
+
+            // Extract a 2x2 slice starting at [1, 2]
+            %result = stablehlo.slice %operand [1:3:1, 2:4:1] : tensor<3x4xi64> -> tensor<2x2xi64>
+            // Input tensor:
+            // [[0, 0, 1, 1],
+            //  [0, 0, 1, 1],
+            //  [0, 0, 0, 0]]
+            // Output tensor:
+            // [[1, 1],
+            //  [1, 1]]
+
+        Parameters
+        ----------
+        in0 : Operand
+            Input tensor to slice
+        start_indices : List[int]
+            Starting indices for the slice in each dimension
+        limit_indices : List[int]
+            Ending indices (exclusive) for the slice in each dimension
+        strides : Optional[List[int]]
+            Step size for each dimension. If None, defaults to 1 for all dimensions
+        unit_attrs : *Optional[List[str]]*
+            Optional list of unit attributes
+        sharding_attr : *Optional[sdy.TensorShardingPerValueAttr]*
+            Optional sharding attribute
+
+        Returns
+        -------
+        (*OpView*)
+            A tensor containing the sliced portion of the input
+        """
+        if strides is None:
+            strides = [1] * len(start_indices)
+
+        if not (len(start_indices) == len(limit_indices) == len(strides)):
+            raise ValueError(
+                "start_indices, limit_indices, and strides must have the same length"
+            )
+
+        start_indices_attr = DenseI64ArrayAttr.get(start_indices, self._ctx)
+        limit_indices_attr = DenseI64ArrayAttr.get(limit_indices, self._ctx)
+        strides_attr = DenseI64ArrayAttr.get(strides, self._ctx)
+
+        stablehlo_kwargs = {
+            "start_indices": start_indices_attr,
+            "limit_indices": limit_indices_attr,
+            "strides": strides_attr,
+        }
+
+        golden_kwargs = {
+            "begins": start_indices,
+            "ends": limit_indices,
+            "step": strides,
+        }
+
+        return self._op_proxy(
+            stablehlo.SliceOp,
+            [in0],
+            unit_attrs=unit_attrs,
+            sharding_attr=sharding_attr,
+            stablehlo_kwargs=stablehlo_kwargs,
+            golden_kwargs=golden_kwargs,
+        )
+
+    def dynamic_slice(
+        self,
+        in0: Operand,
+        start_indices: List[Operand],
+        slice_sizes: List[int],
+        unit_attrs: Optional[List[str]] = None,
+        sharding_attr: Optional[sdy.TensorShardingPerValueAttr] = None,
+    ) -> OpView:
+        """
+        Creates ``stablehlo.dynamic_slice``.
+
+        Tensor dynamic slicing operation.
+
+        Extracts a slice from the input tensor using dynamically-provided start indices.
+        The slice is defined by per-dimension `slice_sizes`, and the starting indices
+        are provided as input tensors (one per dimension).
+
+        More formally, result[result_index] = operand[operand_index] where:
+        operand_index = start_indices + result_index
+
+        Parameters
+        ----------
+        in0 : Operand
+            Input tensor to slice
+        start_indices : List[Operand]
+            List of scalar/rank-1 tensors specifying the start index for each dimension
+        slice_sizes : List[int]
+            Slice size for each dimension
+        unit_attrs : *Optional[List[str]]*
+            Optional list of unit attributes
+        sharding_attr : *Optional[sdy.TensorShardingPerValueAttr]*
+            Optional sharding attribute
+
+        Returns
+        -------
+        (*OpView*)
+            A tensor containing the dynamically sliced portion of the input
+        """
+
+        # Basic validation mirroring slice's checks
+        input_rank = len(self.get_shape(in0))
+        if len(slice_sizes) != input_rank:
+            raise ValueError(
+                "slice_sizes length must match input tensor rank"
+            )
+        if len(start_indices) != input_rank:
+            raise ValueError(
+                "start_indices length must match input tensor rank"
+            )
+
+        slice_sizes_attr = DenseI64ArrayAttr.get(slice_sizes, self._ctx)
+
+        stablehlo_kwargs = {
+            "slice_sizes": slice_sizes_attr,
+        }
+
+        return self._op_proxy(
+            stablehlo.DynamicSliceOp,
+            [in0, *start_indices],
+            unit_attrs=unit_attrs,
+            sharding_attr=sharding_attr,
+            stablehlo_kwargs=stablehlo_kwargs,
+        )
+
+>>>>>>> d704db7c6 (trae为我写的代码，相比于GPT只少了一个golden_kwargs。)
     # ----- Public Shardy Attribute Generators ----
 
     def mesh_axis_attr(

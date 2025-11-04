@@ -2285,7 +2285,65 @@ def slice_golden(input_tensor: GoldenMapTensor, **kwargs) -> GoldenMapTensor:
     return GoldenMapTensor(shard_map, input_tensor.mesh_shape)
 
 
-def zeros_golden(**kwargs) -> GoldenMapTensor:
+def dynamic_slice_golden(
+    input_tensor: BuilderGoldenTensor,
+    *start_indices_tensors,
+    **kwargs,
+) -> BuilderGoldenTensor:
+    """
+    Golden function for dynamic_slice operation.
+
+    Parameters
+    ----------
+    input_tensor : BuilderGoldenTensor
+        Input tensor to slice
+    *start_indices_tensors : BuilderGoldenTensor
+        One tensor per dimension, each providing the start index for that dimension.
+        Scalars or rank-1 tensors are supported; values are interpreted as integers.
+    **kwargs : dict
+        Keyword arguments including 'slice_sizes' as MLIR attribute
+
+    Returns
+    -------
+    BuilderGoldenTensor
+        Dynamically sliced tensor
+    """
+
+    slice_sizes = unpack_mlir_attr(kwargs.get("slice_sizes", []))
+    rank = len(slice_sizes)
+    assert rank == len(start_indices_tensors), "start_indices_tensors must match rank"
+
+    # Extract start indices (use shard-0 for validation)
+    starts: List[int] = []
+    x0 = input_tensor.shard_at(0)
+    for d, st in enumerate(start_indices_tensors):
+        val0 = st if not isinstance(st, BuilderGoldenTensor) else st.shard_at(0)
+        # Support scalar or single-element tensors
+        if isinstance(val0, torch.Tensor):
+            if val0.ndim == 0:
+                starts.append(int(val0.item()))
+            else:
+                # Take first element for simplicity
+                starts.append(int(val0.reshape(-1)[0].item()))
+        else:
+            starts.append(int(val0))
+
+        # Bounds check
+        max_valid = x0.size(d) - slice_sizes[d]
+        if starts[d] < 0 or starts[d] > max_valid:
+            raise IndexError(
+                f"dynamic_slice start index out of bounds for dim {d}: {starts[d]} not in [0,{max_valid}]"
+            )
+
+    # Build slices
+    slicers = tuple(slice(starts[d], starts[d] + slice_sizes[d]) for d in range(rank))
+
+    shard_map = {}
+    for device_id, shard in input_tensor.shard_map.items():
+        shard_map[device_id] = shard[slicers]
+
+    return BuilderGoldenTensor(shard_map, input_tensor.mesh_shape)
+def zeros_golden(**kwargs) -> BuilderGoldenTensor:
     """
     Golden function for zeros operation with TTIR parameter names.
 
@@ -2960,6 +3018,8 @@ GOLDEN_MAPPINGS: Dict[type, Callable] = {
     stablehlo.SineOp: torch.sin,
     stablehlo.SqrtOp: torch.sqrt,
     stablehlo.TanOp: torch.tan,
+    stablehlo.SliceOp: slice_golden,
+    stablehlo.DynamicSliceOp: dynamic_slice_golden,
     # TTNN elementwise operations
     ttnn.MultiplyOp: torch.multiply,
     ttnn.MishOp: torch.nn.functional.mish,
