@@ -644,8 +644,6 @@ class StableHLOBuilder(Builder):
             unit_attrs=unit_attrs,
         )
 
-<<<<<<< HEAD
-=======
     def slice(
         self,
         in0: Operand,
@@ -795,7 +793,6 @@ class StableHLOBuilder(Builder):
             stablehlo_kwargs=stablehlo_kwargs,
         )
 
->>>>>>> d704db7c6 (trae为我写的代码，相比于GPT只少了一个golden_kwargs。)
     # ----- Public Shardy Attribute Generators ----
 
     def mesh_axis_attr(

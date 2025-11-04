@@ -2343,6 +2343,7 @@ def dynamic_slice_golden(
         shard_map[device_id] = shard[slicers]
 
     return BuilderGoldenTensor(shard_map, input_tensor.mesh_shape)
+    
 def zeros_golden(**kwargs) -> BuilderGoldenTensor:
     """
     Golden function for zeros operation with TTIR parameter names.
