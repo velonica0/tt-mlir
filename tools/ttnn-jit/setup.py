@@ -12,7 +12,7 @@ from setuptools import setup
 import sysconfig
 
 # Use Python 3.11 to match the build environment
-PYTHON_VERSION = "cpython-311"
+PYTHON_VERSION = "cpython-312"
 DEFAULT_ARCH = "x86_64"
 
 

@@ -6,6 +6,7 @@
 #define TT_RUNTIME_PERF_H
 
 #include <ostream>
+#include <cstdint>
 
 namespace tt::runtime::perf {
 
