@@ -123,6 +123,63 @@ def log(
     return builder.log(in0, unit_attrs=unit_attrs)
 
 
+# def dynamic_slice(
+#     in0: Operand,
+#     start_indices_tensors: List[Operand],
+#     slice_sizes: List[int],
+#     builder: StableHLOBuilder,
+#     unit_attrs: Optional[List[str]] = None,
+# ):
+#     """
+#     Wrapper for stablehlo.dynamic_slice.
+
+#     Parameters
+#     ----------
+#     in0 : Operand
+#         Input tensor to slice.
+#     start_indices_tensors : List[Operand]
+#         A list of rank-0 (scalar) tensors specifying the dynamic start indices.
+#     slice_sizes : List[int]
+#         Static slice sizes for each dimension.
+#     builder : StableHLOBuilder
+#         Builder to create the operation.
+#     unit_attrs : Optional[List[str]]
+#         Optional list of unit attributes.
+#     """
+
+#     builder.set_graph_level_check(True)
+#     return builder.dynamic_slice(
+#         in0,
+#         *start_indices_tensors,
+#         slice_sizes=slice_sizes,
+#         unit_attrs=unit_attrs,
+#     )
+
+def dynamic_slice_op(
+    in0: Operand,
+    start_indices_operand: Operand, # ⚡ 区别: 动态起始索引是另一个 Operand
+    slice_sizes: List[int],         # ⚡ 区别: 使用 slice_sizes (静态属性) 代替 limit_indices 和 strides
+    builder: StableHLOBuilder,
+    unit_attrs: Optional[List[str]] = None,
+):
+    """
+    StableHLO dynamic_slice 操作的封装函数。
+    
+    参数:
+        in0 (Operand): 输入张量。
+        start_indices_operand (Operand): 包含起始索引的 1D 张量。
+        slice_sizes (List[int]): 切片后结果在每个维度上的大小（静态常量）。
+        builder (StableHLOBuilder): 构建器对象。
+        unit_attrs (Optional[List[str]]): 可选属性。
+    """
+    builder.set_graph_level_check(True)
+    return builder.dynamic_slice(
+        in0,
+        start_indices=start_indices_operand,
+        slice_sizes=slice_sizes,
+        unit_attrs=unit_attrs,
+    )
+
 @pytest.mark.parametrize("shape", [(128, 128)], ids=shape_str)
 @pytest.mark.parametrize("dtype", [torch.float32], ids=["f32"])
 @pytest.mark.parametrize("target", ["ttnn", "ttmetal"])
@@ -234,6 +291,43 @@ def test_stablehlo_multi_return_support(
         multi_return_model,
         shapes,
         dtypes,
+        test_base=request.node.name,
+        output_root=request.config.getoption("--path"),
+        system_desc_path=request.config.getoption("--sys-desc"),
+        target=target,
+        device=device,
+    )
+
+
+@pytest.mark.parametrize(
+    "shape,start_indices,slice_sizes",
+    [
+        ((128, 128), (0, 0), [64, 64]),
+        ((128, 128), (32, 32), [64, 64]),
+        ((128, 128), (16, 64), [32, 32]),
+        ((256, 256), (64, 64), [128, 128]),
+        
+    ],
+    ids=["128x128_basic", "128x128_offset", "128x128_partial", "256x256_large"],
+)
+@pytest.mark.parametrize("dtype", [torch.float32], ids=["f32"])
+@pytest.mark.parametrize("target", ["ttnn"])
+def test_dynamic_slice(
+    shape: Shape,
+    start_indices: Shape,
+    slice_sizes: List[int],
+    dtype: torch.dtype,
+    target: str,
+    request,
+    device,
+):
+    def dynamic_slice_fn(in0: Operand, start_indices_Op: Operand, builder: StableHLOBuilder):
+        return dynamic_slice_op(in0, start_indices_Op, slice_sizes, builder)
+
+    compile_and_execute_shlo(
+        dynamic_slice_fn,
+        [shape,start_indices],
+        [dtype,dtype],
         test_base=request.node.name,
         output_root=request.config.getoption("--path"),
         system_desc_path=request.config.getoption("--sys-desc"),
