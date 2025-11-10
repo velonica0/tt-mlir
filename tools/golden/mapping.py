@@ -2286,18 +2286,18 @@ def slice_golden(input_tensor: GoldenMapTensor, **kwargs) -> GoldenMapTensor:
 
 
 def dynamic_slice_golden(
-    input_tensor: BuilderGoldenTensor,
+    input_tensor: GoldenMapTensor,
     *start_indices_tensors,
     **kwargs,
-) -> BuilderGoldenTensor:
+) -> GoldenMapTensor:
     """
     Golden function for dynamic_slice operation.
 
     Parameters
     ----------
-    input_tensor : BuilderGoldenTensor
+    input_tensor : GoldenMapTensor
         Input tensor to slice
-    *start_indices_tensors : BuilderGoldenTensor
+    *start_indices_tensors : GoldenMapTensor
         One tensor per dimension, each providing the start index for that dimension.
         Scalars or rank-1 tensors are supported; values are interpreted as integers.
     **kwargs : dict
@@ -2305,7 +2305,7 @@ def dynamic_slice_golden(
 
     Returns
     -------
-    BuilderGoldenTensor
+    GoldenMapTensor
         Dynamically sliced tensor
     """
 
@@ -2317,7 +2317,7 @@ def dynamic_slice_golden(
     starts: List[int] = []
     x0 = input_tensor.shard_at(0)
     for d, st in enumerate(start_indices_tensors):
-        val0 = st if not isinstance(st, BuilderGoldenTensor) else st.shard_at(0)
+        val0 = st if not isinstance(st, GoldenMapTensor) else st.shard_at(0)
         # Support scalar or single-element tensors
         if isinstance(val0, torch.Tensor):
             if val0.ndim == 0:
@@ -2342,9 +2342,9 @@ def dynamic_slice_golden(
     for device_id, shard in input_tensor.shard_map.items():
         shard_map[device_id] = shard[slicers]
 
-    return BuilderGoldenTensor(shard_map, input_tensor.mesh_shape)
+    return GoldenMapTensor(shard_map, input_tensor.mesh_shape)
     
-def zeros_golden(**kwargs) -> BuilderGoldenTensor:
+def zeros_golden(**kwargs) -> GoldenMapTensor:
     """
     Golden function for zeros operation with TTIR parameter names.
 
@@ -3020,6 +3020,7 @@ GOLDEN_MAPPINGS: Dict[type, Callable] = {
     stablehlo.SqrtOp: torch.sqrt,
     stablehlo.TanOp: torch.tan,
     stablehlo.SliceOp: slice_golden,
+    stablehlo.ConstantOp: constant_golden,
     stablehlo.DynamicSliceOp: dynamic_slice_golden,
     # TTNN elementwise operations
     ttnn.MultiplyOp: torch.multiply,

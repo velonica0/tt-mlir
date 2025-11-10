@@ -18,7 +18,6 @@ from ttmlir.dialects import stablehlo, sdy, mpmd
 from builder.base.builder import *
 from golden import *
 
-
 class StableHLOBuilder(Builder):
     # ----- Methods -----
 
@@ -304,6 +303,70 @@ class StableHLOBuilder(Builder):
             unit_attrs=unit_attrs,
             sharding_attr=sharding_attr,
         )
+
+    def constant(
+        self,
+        tensor: torch.Tensor,
+        unit_attrs: Optional[List[str]] = None,
+        sharding_attr: Optional[sdy.TensorShardingPerValueAttr] = None,
+    ) -> OpView:
+        """
+        Creates ``stablehlo.constant``.
+
+        *Constant tensor operation.*
+
+        Creates a tensor from a literal value.
+
+        Parameters
+        ----------
+        tensor : torch.Tensor
+            The tensor value to use for the constant
+        unit_attrs : *Optional[List[str]]*
+            Optional list of unit attributes
+        sharding_attr : *Optional[sdy.TensorShardingPerValueAttr]*
+            Optional sharding attribute
+
+        Returns
+        -------
+        (*OpView*)
+            A new constant tensor
+        """
+        if not isinstance(tensor, torch.Tensor):
+            raise TypeError("constant expects a torch.Tensor input")
+
+        if tensor.numel() == 0:
+            raise ValueError("Cannot create constant with empty tensor")
+
+        mlir_dtype = self._get_type_from_torch_dtype(tensor.dtype)
+        shape = list(tensor.shape)
+        tensor_type = RankedTensorType.get(shape, mlir_dtype)
+
+        flat_values = tensor.flatten().tolist()
+
+        if tensor.numel() == 1 or len(set(flat_values)) == 1:
+            # Splat case
+            if isinstance(mlir_dtype, IntegerType):
+                attr = IntegerAttr.get(mlir_dtype, int(flat_values[0]))
+            elif isinstance(mlir_dtype, FloatType):
+                attr = FloatAttr.get(mlir_dtype, float(flat_values[0]))
+            else:
+                raise NotImplementedError(f"Unsupported MLIR type: {mlir_dtype}")
+
+            value_attr = DenseElementsAttr.get_splat(tensor_type, attr)
+        else:
+            # Non-splat case
+            value_attr = DenseElementsAttr.get_from_list(tensor_type, flat_values)
+
+        return self._op_proxy(
+            stablehlo.ConstantOp,
+            [],
+            unit_attrs=unit_attrs,
+            sharding_attr=sharding_attr,
+            stablehlo_kwargs={"value": value_attr},
+            golden_kwargs={"value": tensor},
+        )
+
+
 
     def cosine(
         self,
@@ -729,136 +792,53 @@ class StableHLOBuilder(Builder):
             golden_kwargs=golden_kwargs,
         )
 
-    # def dynamic_slice(
-    #     self,
-    #     in0: Operand,
-    #     start_indices: List[Operand],
-    #     slice_sizes: List[int],
-    #     unit_attrs: Optional[List[str]] = None,
-    #     sharding_attr: Optional[sdy.TensorShardingPerValueAttr] = None,
-    # ) -> OpView:
-    #     """
-    #     Creates ``stablehlo.dynamic_slice``.
-
-    #     Tensor dynamic slicing operation.
-
-    #     Extracts a slice from the input tensor using dynamically-provided start indices.
-    #     The slice is defined by per-dimension `slice_sizes`, and the starting indices
-    #     are provided as input tensors (one per dimension).
-
-    #     More formally, result[result_index] = operand[operand_index] where:
-    #     operand_index = start_indices + result_index
-
-    #     Parameters
-    #     ----------
-    #     in0 : Operand
-    #         Input tensor to slice
-    #     start_indices : List[Operand]
-    #         List of scalar/rank-1 tensors specifying the start index for each dimension
-    #     slice_sizes : List[int]
-    #         Slice size for each dimension
-    #     unit_attrs : *Optional[List[str]]*
-    #         Optional list of unit attributes
-    #     sharding_attr : *Optional[sdy.TensorShardingPerValueAttr]*
-    #         Optional sharding attribute
-
-    #     Returns
-    #     -------
-    #     (*OpView*)
-    #         A tensor containing the dynamically sliced portion of the input
-    #     """
-
-    #     # Basic validation mirroring slice's checks
-    #     input_rank = len(self.get_shape(in0))
-    #     if len(slice_sizes) != input_rank:
-    #         raise ValueError(
-    #             "slice_sizes length must match input tensor rank"
-    #         )
-    #     if len(start_indices) != input_rank:
-    #         raise ValueError(
-    #             "start_indices length must match input tensor rank"
-    #         )
-
-    #     slice_sizes_attr = DenseI64ArrayAttr.get(slice_sizes, self._ctx)
-
-    #     stablehlo_kwargs = {
-    #         "slice_sizes": slice_sizes_attr,
-    #     }
-
-    #     golden_kwargs = {
-    #         "slice_sizes": slice_sizes,
-    #     }
-
-    #     return self._op_proxy(
-    #         stablehlo.DynamicSliceOp,
-    #         [in0, *start_indices],
-    #         unit_attrs=unit_attrs,
-    #         sharding_attr=sharding_attr,
-    #         stablehlo_kwargs=stablehlo_kwargs,
-    #         golden_kwargs=golden_kwargs,
-    #     )
-
-
-    # 假设这是 StableHLOBuilder 类的方法
     def dynamic_slice(
         self,
         in0: Operand,
-        start_indices: Operand, # ⚡ 注意: 这是 Operand 类型
-        slice_sizes: List[int], # ⚡ 注意: 这是 List[int] 类型
+        start_indices: List[int],
+        slice_sizes: List[int],
         unit_attrs: Optional[List[str]] = None,
         sharding_attr: Optional[sdy.TensorShardingPerValueAttr] = None,
     ) -> OpView:
-
-
-        # // %operand: [
-        # //            [0, 0, 1, 1],
-        # //            [0, 0, 1, 1],
-        # //            [0, 0, 0, 0],
-        # //            [0, 0, 0, 0]
-        # //           ]
-        # // %start_indices0: -1
-        # // %start_indices1: 3
-        # %result = "stablehlo.dynamic_slice"(%operand, %start_indices0, %start_indices1) {
-        # slice_sizes = array<i64: 2, 2>
-        # } : (tensor<4x4xi32>, tensor<i64>, tensor<i64>) -> tensor<2x2xi32>
-        # // %result: [
-        # //           [1, 1],
-        # //           [1, 1]
-        # //          ]
         """
         Creates ``stablehlo.dynamic_slice``.
 
-        Dynamic Slice operation. Extracts a slice from the operand using 
-        dynamically computed starting indices, with a fixed stride of 1.
+        *Dynamic slice operation.*
+
+        Extracts a slice from a dynamic tensor.
 
         Parameters
         ----------
         in0 : Operand
-            Input tensor to slice.
-        start_indices : Operand
-            A 1D tensor containing the starting indices of the slice for each dimension.
+            The input tensor
+        start_indices : List[int]
+            The starting indices of the slice for each dimension
         slice_sizes : List[int]
-            The size of the slice for each dimension (must be static).
-        # ... 其他参数 ...
+            The size of the slice for each dimension
+        unit_attrs : *Optional[List[str]]*
+            Optional list of unit attributes
+        sharding_attr : *Optional[sdy.TensorShardingPerValueAttr]*
+            Optional sharding attribute
 
         Returns
         -------
         (*OpView*)
-            A tensor containing the extracted slice.
+            A new tensor representing the slice
         """
-
-        # slice_sizes 必须是一个静态属性 (DenseI64ArrayAttr)
-        slice_sizes_attr = DenseI64ArrayAttr.get(slice_sizes, context=self._ctx)
-
+        start_indices_op = [
+            self.constant(torch.tensor(i, dtype=torch.int64)) if isinstance(i, int) else i
+            for i in start_indices
+        ]
         return self._op_proxy(
-            stablehlo.DynamicSliceOp, # ⚡ 使用 DynamicSliceOp
-            [in0, start_indices],     # ⚡ 两个 Operand: in0 和 start_indices
+            stablehlo.DynamicSliceOp,
+            [in0, start_indices_op],
             unit_attrs=unit_attrs,
             sharding_attr=sharding_attr,
             stablehlo_kwargs={
-                "slice_sizes": slice_sizes_attr,
+                "slice_sizes": DenseI64ArrayAttr.get(slice_sizes, context=self._ctx),
             },
             golden_kwargs={
+                "start_indices": start_indices,
                 "slice_sizes": slice_sizes,
             },
         )
