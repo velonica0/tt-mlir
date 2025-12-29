@@ -222,6 +222,17 @@ add_mlir_python_modules(TTMLIRPythonModules
     TTMLIRPythonCAPI
 )
 
+target_link_libraries(TTMLIRPythonCAPI
+  PRIVATE
+    TTRuntimeTTNN
+    TTRuntimeTTNNOps
+    SdyExplicitReshardsUtil  
+    SdyTransformsPasses
+    SdyDialect
+    SdyAxisListRef           
+    SdyRegister
+)
+
 # HACK: Use flat namespace on macOS to allow RTTI symbols from MLIRPass/LLVMSupport
 # to be found at runtime. This is needed because PassInstrumentation RTTI isn't
 # exported by default from the pre-built MLIR libraries.
